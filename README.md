@@ -1,33 +1,73 @@
-# React + TypeScript + Vite
+# FinBiz
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Pembukuan double-entry multi-PT untuk UMKM — cloud SaaS + self-host.
 
-Currently, two official plugins are available:
+## Struktur
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```
+finbiz/
+  frontend/         # App pelanggan — http://localhost:5173
+  frontend-admin/   # Platform admin — http://localhost:5174
+  backend/          # API Hono — http://localhost:8080
+  docs/PLAN.md
+  Makefile
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
-# finbiz
+## Prasyarat
+
+- Node.js 20+
+- PostgreSQL (DB `finbiz`)
+- Redis
+
+Credential lokal default ada di `backend/.env.example`. Jika Postgres hanya socket Unix:
+
+```env
+PGHOST=/path/to/pgsql/run
+PGDATABASE=finbiz
+PGUSER=postgres
+PGPASSWORD=Admin123
+```
+
+## Setup
+
+```bash
+# Secrets (opsional — tempel manual ke .env)
+make gen-secrets
+make env-backend
+
+# Database
+createdb finbiz   # atau CREATE DATABASE finbiz;
+
+cd backend
+npm install
+npm run db:migrate
+npm run db:seed
+npm run dev
+
+# Terminal lain
+cd frontend && npm install && npm run dev
+cd frontend-admin && npm install && npm run dev
+```
+
+## Akun seed
+
+| App | Email | Password |
+|-----|-------|----------|
+| Platform admin | `admin@finbiz.local` | `Admin123` |
+| Tenant | daftar via `/register` | trial 90 hari (editable di admin) |
+
+## Makefile
+
+| Command | Fungsi |
+|---------|--------|
+| `make gen-secrets` | Password acak Postgres/Redis/SMTP |
+| `make gen-password` | Satu password acak |
+| `make hash-password P='...'` | Bcrypt hash |
+| `make env-backend` | Copy `.env.example` → `.env` jika belum ada |
+
+SMTP: isi `SMTP_PASS` sendiri di `backend/.env` (mailbox `admin@fransiskus-richard.my.id`).
+
+## Dokumentasi
+
+- [docs/PLAN.md](docs/PLAN.md) — rencana produk & workstream
+- [docs/api.md](docs/api.md) — referensi API

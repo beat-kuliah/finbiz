@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --pine: #1b6b4a;
+  --pine-dark: #0f4a34;
+  --pine-light: #2d9a6a;
+  --ink: #0f1f1a;
+  --ink-muted: #3d524a;
+  --ink-faint: #6b7f76;
+  --paper: #f4f7f5;
+  --paper-card: #ffffff;
+  --sand: #e8efe9;
+  --sidebar-from: #0c3d2c;
+  --sidebar-to: #14553c;
+}
+
+html.dark {
+  color-scheme: dark;
+  --pine: #3ecf8e;
+  --pine-dark: #9aefc4;
+  --pine-light: #2d9a6a;
+  --ink: #e8f5ef;
+  --ink-muted: #a8c4b6;
+  --ink-faint: #7a9a8c;
+  --paper: #0b1612;
+  --paper-card: #12201a;
+  --sand: #1e3229;
+  --sidebar-from: #07150f;
+  --sidebar-to: #0d281c;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Source Sans 3", system-ui, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--pine) 22%, transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--pine) 12%, transparent) 0%, transparent 45%),
+    var(--paper);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.sidebar-panel {
+  background: linear-gradient(165deg, var(--sidebar-from) 0%, var(--sidebar-to) 55%, #1a6b4a 140%);
+  color: #fff;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-link-active {
+  background: #ffffff;
+  color: #0c3d2c;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.sidebar-link-active svg {
+  color: #0c3d2c;
+  opacity: 1;
+}
+
+.auth-input {
+  @apply w-full rounded-md border border-sand bg-paper-card px-3.5 py-2.5 text-ink outline-none transition;
+}
+
+.auth-input:focus {
+  border-color: var(--pine-light);
+  box-shadow: 0 0 0 3px rgba(27, 107, 74, 0.12);
+}
+
+.auth-btn {
+  @apply w-full rounded-md bg-pine py-2.5 font-medium text-white transition disabled:opacity-60;
+}
+
+.auth-btn:hover:not(:disabled) {
+  background: var(--pine-dark);
+}
+
+.card {
+  @apply rounded-xl border border-sand bg-paper-card p-5;
+}
+
+.field-input {
+  @apply w-full rounded-lg border border-sand bg-paper px-3 py-2 text-ink outline-none;
+}
+
+.btn-primary {
+  @apply rounded-lg bg-pine px-4 py-2 text-sm font-medium text-white disabled:opacity-60;
+}
+
+.btn-secondary {
+  @apply rounded-lg border border-sand px-4 py-2 text-sm font-medium text-ink-muted disabled:opacity-60;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--pine) 40%, var(--sand));
+}
