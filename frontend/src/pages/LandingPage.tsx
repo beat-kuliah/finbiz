@@ -1,19 +1,22 @@
 import { Link } from "react-router-dom";
 
 function LedgerVisual() {
+  // Debit/credit columns stay symmetric around the center divider.
+  const left = 56;
+  const mid = 230;
+  const gap = 14;
+  const right = 404;
+  const debitEnd = mid - gap;
+  const creditStart = mid + gap;
+
   return (
     <svg
-      className="absolute inset-0 h-full w-full"
-      viewBox="0 0 1440 900"
-      preserveAspectRatio="xMidYMid slice"
+      className="h-full w-full"
+      viewBox="0 0 460 520"
+      preserveAspectRatio="xMidYMid meet"
       aria-hidden
     >
       <defs>
-        <linearGradient id="heroWash" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#0f4a34" />
-          <stop offset="50%" stopColor="#1b6b4a" />
-          <stop offset="100%" stopColor="#145a3c" />
-        </linearGradient>
         <linearGradient id="pagePaper" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#f7faf8" />
           <stop offset="100%" stopColor="#e8efe9" />
@@ -23,77 +26,72 @@ function LedgerVisual() {
         </pattern>
       </defs>
 
-      <rect width="1440" height="900" fill="url(#heroWash)" />
-      <ellipse className="animate-sheen" cx="1180" cy="100" rx="260" ry="150" fill="#2d9a6a" opacity="0.22" />
-      <ellipse cx="200" cy="820" rx="300" ry="160" fill="#0a3324" opacity="0.35" />
+      <g className="animate-drift" style={{ transformOrigin: "230px 260px" }}>
+        <rect x="0" y="0" width="460" height="520" rx="8" fill="url(#pagePaper)" />
+        <rect x="0" y="0" width="26" height="520" fill="#d4e2d8" />
+        <line x1={mid} y1="0" x2={mid} y2="520" stroke="#b8cfc0" strokeWidth="2" />
 
-      {/* Smaller ledger with margin from top/bottom so header buttons stay clear */}
-      <g className="animate-drift" style={{ transformOrigin: "1120px 490px" }}>
-        <rect x="880" y="200" width="460" height="520" rx="8" fill="url(#pagePaper)" />
-        <rect x="880" y="200" width="26" height="520" fill="#d4e2d8" />
-        <line x1="1110" y1="200" x2="1110" y2="720" stroke="#b8cfc0" strokeWidth="2" />
+        <rect x={left} y="52" width={debitEnd - left} height="400" fill="url(#ledgerLines)" />
+        <rect x={creditStart} y="52" width={right - creditStart} height="400" fill="url(#ledgerLines)" />
 
-        <rect x="924" y="252" width="168" height="400" fill="url(#ledgerLines)" />
-        <rect x="1132" y="252" width="180" height="400" fill="url(#ledgerLines)" />
-
-        <text x="924" y="242" fill="#6b7f76" fontFamily="Source Sans 3, sans-serif" fontSize="12">
+        <text x={left} y="42" fill="#6b7f76" fontFamily="Source Sans 3, sans-serif" fontSize="12">
           Debit
         </text>
-        <text x="1132" y="242" fill="#6b7f76" fontFamily="Source Sans 3, sans-serif" fontSize="12">
+        <text x={creditStart} y="42" fill="#6b7f76" fontFamily="Source Sans 3, sans-serif" fontSize="12">
           Kredit
         </text>
 
-        <text x="924" y="286" fill="#0f1f1a" fontFamily="Source Sans 3, sans-serif" fontSize="14" fontWeight="600">
+        <text x={left} y="86" fill="#0f1f1a" fontFamily="Source Sans 3, sans-serif" fontSize="14" fontWeight="600">
           Kas
         </text>
-        <text x="1080" y="286" fill="#1b6b4a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
+        <text x={debitEnd} y="86" fill="#1b6b4a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
           25.000.000
         </text>
-        <text x="1132" y="286" fill="#0f1f1a" fontFamily="Source Sans 3, sans-serif" fontSize="14" fontWeight="600">
+        <text x={creditStart} y="86" fill="#0f1f1a" fontFamily="Source Sans 3, sans-serif" fontSize="14" fontWeight="600">
           Modal disetor
         </text>
-        <text x="1300" y="286" fill="#1b6b4a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
+        <text x={right} y="86" fill="#1b6b4a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
           25.000.000
         </text>
 
-        <text x="924" y="334" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
+        <text x={left} y="134" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
           Piutang usaha
         </text>
-        <text x="1080" y="334" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
+        <text x={debitEnd} y="134" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
           4.200.000
         </text>
-        <text x="1132" y="334" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
+        <text x={creditStart} y="134" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
           Pendapatan
         </text>
-        <text x="1300" y="334" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
+        <text x={right} y="134" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
           4.200.000
         </text>
 
-        <text x="924" y="382" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
+        <text x={left} y="182" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
           Beban operasional
         </text>
-        <text x="1080" y="382" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
+        <text x={debitEnd} y="182" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
           1.150.000
         </text>
-        <text x="1132" y="382" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
+        <text x={creditStart} y="182" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14">
           Kas
         </text>
-        <text x="1300" y="382" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
+        <text x={right} y="182" fill="#3d524a" fontFamily="Source Sans 3, sans-serif" fontSize="14" textAnchor="end">
           1.150.000
         </text>
 
         <path
           className="animate-ink-draw"
-          d="M924 440 H1080 M1132 440 H1300"
+          d={`M${left} 240 H${debitEnd} M${creditStart} 240 H${right}`}
           stroke="#1b6b4a"
           strokeWidth="2"
           fill="none"
           strokeLinecap="round"
         />
-        <text x="924" y="472" fill="#0f4a34" fontFamily="Fraunces, Georgia, serif" fontSize="16">
+        <text x={left} y="272" fill="#0f4a34" fontFamily="Fraunces, Georgia, serif" fontSize="16">
           Berimbang
         </text>
-        <text x="1132" y="472" fill="#0f4a34" fontFamily="Fraunces, Georgia, serif" fontSize="16">
+        <text x={creditStart} y="272" fill="#0f4a34" fontFamily="Fraunces, Georgia, serif" fontSize="16">
           Otomatis
         </text>
       </g>
@@ -103,32 +101,19 @@ function LedgerVisual() {
 
 export function LandingPage() {
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Full-bleed visual */}
-      <div className="absolute inset-0">
-        <LedgerVisual />
-        {/* Strong left scrim: readable copy zone; fades before the ledger */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(90deg, #0f4a34 0%, #0f4a34 38%, rgba(15,74,52,0.92) 52%, rgba(15,74,52,0.35) 68%, transparent 82%)",
-          }}
-        />
-        {/* Mobile: full dark wash so copy never fights the ledger */}
-        <div
-          className="absolute inset-0 md:hidden"
-          style={{
-            background:
-              "linear-gradient(180deg, #0f4a34 0%, #0f4a34 58%, rgba(15,74,52,0.88) 72%, rgba(15,74,52,0.45) 100%)",
-          }}
-        />
-      </div>
+    <div className="relative min-h-svh overflow-hidden bg-brand-deep text-white">
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse 70% 50% at 12% 0%, #1b6b4a 0%, transparent 55%), radial-gradient(ellipse 50% 40% at 100% 100%, #0a3324 0%, transparent 50%)",
+        }}
+      />
 
-      <div className="relative z-10 flex min-h-screen flex-col">
-        <header className="relative z-20 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-7xl flex-col px-6 lg:px-10">
+        <header className="flex items-center justify-between py-5">
           <div className="font-display text-2xl tracking-tight text-white">FinBiz</div>
-          <div className="flex items-center gap-2 rounded-md bg-pine-dark/70 p-1 backdrop-blur-sm sm:gap-3 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+          <div className="flex items-center gap-2 rounded-md bg-brand-deep/70 p-1 backdrop-blur-sm sm:gap-3 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
             <Link
               to="/login"
               className="rounded-md px-3 py-2 text-sm text-white transition hover:bg-white/10"
@@ -137,16 +122,15 @@ export function LandingPage() {
             </Link>
             <Link
               to="/register"
-              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-pine-dark transition hover:bg-[#f0f6f2]"
+              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-brand-deep transition hover:bg-[#f0f6f2]"
             >
               Coba gratis
             </Link>
           </div>
         </header>
 
-        <section className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-6 pb-24 pt-10 md:pb-28 md:pt-6">
-          {/* Constrain copy to the dark scrim zone */}
-          <div className="max-w-xl">
+        <section className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-2 lg:gap-16 lg:py-6">
+          <div className="max-w-xl lg:max-w-none">
             <p className="animate-fade-up font-display text-6xl leading-[0.95] tracking-tight text-white sm:text-7xl md:text-8xl">
               FinBiz
             </p>
@@ -159,7 +143,7 @@ export function LandingPage() {
             <div className="animate-fade-up-delay-3 mt-9 flex flex-wrap items-center gap-3">
               <Link
                 to="/register"
-                className="rounded-md bg-white px-6 py-3 font-medium text-pine-dark transition hover:bg-[#f0f6f2]"
+                className="rounded-md bg-white px-6 py-3 font-medium text-brand-deep transition hover:bg-[#f0f6f2]"
               >
                 Mulai trial 14 hari
               </Link>
@@ -169,6 +153,16 @@ export function LandingPage() {
               >
                 Sudah punya akun?
               </Link>
+            </div>
+          </div>
+
+          <div className="animate-fade-up-delay-2 relative mx-auto hidden w-full max-w-lg lg:block xl:max-w-xl">
+            <div
+              className="pointer-events-none absolute -inset-8 rounded-full opacity-40 blur-2xl"
+              style={{ background: "radial-gradient(circle, #2d9a6a 0%, transparent 70%)" }}
+            />
+            <div className="relative aspect-[460/520] w-full overflow-hidden rounded-lg shadow-2xl shadow-black/25">
+              <LedgerVisual />
             </div>
           </div>
         </section>

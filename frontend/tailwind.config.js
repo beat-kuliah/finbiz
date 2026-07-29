@@ -20,6 +20,9 @@ export default {
           dark: "var(--pine-dark)",
           light: "var(--pine-light)",
         },
+        brand: {
+          deep: "var(--brand-deep)",
+        },
         sand: "var(--sand)",
       },
       fontFamily: {

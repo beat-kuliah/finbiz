@@ -4,6 +4,7 @@
 
 :root {
   color-scheme: light;
+  --brand-deep: #0f4a34;
   --pine: #1b6b4a;
   --pine-dark: #0f4a34;
   --pine-light: #2d9a6a;
@@ -32,6 +33,10 @@ html.dark {
   --sidebar-to: #0d281c;
 }
 
+html {
+  background: var(--paper);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -41,6 +46,20 @@ body {
     radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--pine) 22%, transparent) 0%, transparent 55%),
     radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--pine) 12%, transparent) 0%, transparent 45%),
     var(--paper);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),
+select,
+textarea {
+  background-color: var(--paper-card);
+  color: var(--ink);
+  color-scheme: inherit;
+  border-color: var(--sand);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-faint);
 }
 
 #root {
@@ -150,27 +169,33 @@ body {
   }
 }
 
-.auth-input {
-  @apply w-full rounded-md border border-sand bg-paper-card px-3.5 py-2.5 text-ink outline-none transition;
-}
+@layer components {
+  .auth-input {
+    @apply w-full rounded-md border px-3.5 py-2.5 outline-none transition;
+    border-color: var(--sand);
+    background-color: var(--paper-card);
+    color: var(--ink);
+  }
 
-.auth-input:focus {
-  border-color: var(--pine-light);
-  box-shadow: 0 0 0 3px rgba(27, 107, 74, 0.12);
-}
+  .auth-input:focus {
+    border-color: var(--pine-light);
+    box-shadow: 0 0 0 3px rgba(27, 107, 74, 0.12);
+  }
 
-.auth-btn {
-  @apply w-full rounded-md bg-pine py-2.5 font-medium text-white transition disabled:opacity-60;
-}
+  .auth-btn {
+    @apply w-full rounded-md py-2.5 font-medium text-white transition disabled:opacity-60;
+    background: var(--pine);
+  }
 
-.auth-btn:hover:not(:disabled) {
-  background: var(--pine-dark);
-}
+  .auth-btn:hover:not(:disabled) {
+    background: var(--pine-dark);
+  }
 
-html.dark .auth-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--pine) 80%, black);
-}
+  html.dark .auth-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--pine) 80%, black);
+  }
 
-.auth-btn:active:not(:disabled) {
-  transform: translateY(1px);
+  .auth-btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
 }

@@ -86,9 +86,9 @@ export function GoogleSignInButton({ mode, disabled, onCredential }: Props) {
           auto_select: false,
         });
         hostRef.current.innerHTML = "";
-        const width = Math.min(hostRef.current.offsetWidth || 320, 400);
+        const width = Math.min(Math.max(hostRef.current.offsetWidth || 320, 240), 400);
         window.google!.accounts.id.renderButton(hostRef.current, {
-          theme: "outline",
+          theme: "filled_blue",
           size: "large",
           width,
           text: mode === "register" ? "signup_with" : "signin_with",
