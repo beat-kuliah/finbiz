@@ -131,6 +131,8 @@ Kinds: `customer`, `vendor`, `lender`, `other`.
 
 Kinds: `cash_in`, `cash_out`, `transfer`, `capital`.
 
+Query (list): `contactId` (optional UUID) — filter documents linked to a contact. Response includes `contactId` when set.
+
 ---
 
 ## Journals
@@ -166,6 +168,8 @@ Kinds: `cash_in`, `cash_out`, `transfer`, `capital`.
 | POST | `/api/receipt` | Bearer+Org | Record receipt against AR |
 | POST | `/api/loan-in` | Bearer+Org | Record loan received |
 | POST | `/api/loan-payment` | Bearer+Org | Loan repayment |
+
+Query (`GET /api/open-items`): `kind` = `receivable` \| `payable` (default `receivable`); `contactId` (optional UUID) — filter by contact.
 
 ---
 

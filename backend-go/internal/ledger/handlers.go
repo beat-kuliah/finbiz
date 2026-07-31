@@ -51,6 +51,7 @@ func (s *Service) DocumentsRoutes() chi.Router {
 	s.withOrg(r)
 	r.Get("/", s.listDocuments)
 	r.Post("/", s.createDocument)
+	r.Get("/{id}", s.getDocument)
 	return r
 }
 
@@ -300,11 +301,19 @@ func (s *Service) accountLedger(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) listDocuments(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := platform.OrgID(r.Context())
-	rows, err := s.db.Query(r.Context(), `
-		SELECT id, type, status, date::text, total_amount::text, description, metadata
-		FROM documents WHERE org_id = $1
-		ORDER BY date DESC, created_at DESC
-	`, orgID)
+	contactID := r.URL.Query().Get("contactId")
+
+	q := `
+		SELECT id, type, number, status, date::text, due_date::text, total_amount::text, description, metadata, contact_id
+		FROM documents WHERE org_id = $1`
+	args := []any{orgID}
+	if contactID != "" {
+		q += ` AND contact_id = $2`
+		args = append(args, contactID)
+	}
+	q += ` ORDER BY date DESC, created_at DESC`
+
+	rows, err := s.db.Query(r.Context(), q, args...)
 	if err != nil {
 		writeAPIError(w, err)
 		return
@@ -313,16 +322,70 @@ func (s *Service) listDocuments(w http.ResponseWriter, r *http.Request) {
 
 	docs := []DocumentAPI{}
 	for rows.Next() {
-		var id, typ, status, date, total string
+		var id, typ, number, status, date, total string
+		var dueDate *string
 		var desc *string
 		var meta []byte
-		if err := rows.Scan(&id, &typ, &status, &date, &total, &desc, &meta); err != nil {
+		var contactIDCol *string
+		if err := rows.Scan(&id, &typ, &number, &status, &date, &dueDate, &total, &desc, &meta, &contactIDCol); err != nil {
 			writeAPIError(w, err)
 			return
 		}
-		docs = append(docs, DocumentToAPI(id, typ, status, date, total, desc, meta))
+		docs = append(docs, DocumentToAPIFull(id, typ, number, status, date, dueDate, total, desc, meta, contactIDCol))
 	}
 	platform.JSON(w, http.StatusOK, map[string]any{"documents": docs})
+}
+
+func (s *Service) getDocument(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := platform.OrgID(r.Context())
+	docID := chi.URLParam(r, "id")
+
+	var id, typ, number, status, date, total string
+	var dueDate *string
+	var desc *string
+	var meta []byte
+	var contactIDCol *string
+	err := s.db.QueryRow(r.Context(), `
+		SELECT id, type, number, status, date::text, due_date::text, total_amount::text, description, metadata, contact_id
+		FROM documents WHERE id = $1 AND org_id = $2
+	`, docID, orgID).Scan(&id, &typ, &number, &status, &date, &dueDate, &total, &desc, &meta, &contactIDCol)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			platform.JSONError(w, platform.NewApiError(http.StatusNotFound, "DOCUMENT_NOT_FOUND", "Document not found"))
+			return
+		}
+		writeAPIError(w, err)
+		return
+	}
+
+	doc := DocumentToAPIFull(id, typ, number, status, date, dueDate, total, desc, meta, contactIDCol)
+
+	var orgName string
+	_ = s.db.QueryRow(r.Context(), `SELECT name FROM organizations WHERE id = $1`, orgID).Scan(&orgName)
+
+	var contact any
+	if contactIDCol != nil {
+		var cid, name, kind string
+		var email, phone, address, taxID *string
+		err := s.db.QueryRow(r.Context(), `
+			SELECT id, name, type, email, phone, address, tax_id FROM contacts WHERE id = $1 AND org_id = $2
+		`, *contactIDCol, orgID).Scan(&cid, &name, &kind, &email, &phone, &address, &taxID)
+		if err == nil {
+			contact = map[string]any{
+				"id": cid, "name": name, "kind": kind,
+				"email": email, "phone": phone, "address": address, "taxId": taxID,
+			}
+		}
+	}
+
+	platform.JSON(w, http.StatusOK, map[string]any{
+		"document": doc,
+		"organization": map[string]any{
+			"id":   orgID,
+			"name": orgName,
+		},
+		"contact": contact,
+	})
 }
 
 type createDocumentBody struct {

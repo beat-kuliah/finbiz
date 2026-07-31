@@ -54,12 +54,16 @@ type CreateDocumentInput struct {
 
 // DocumentAPI is the API document shape.
 type DocumentAPI struct {
-	ID     string  `json:"id"`
-	Kind   string  `json:"kind"`
-	Status string  `json:"status"`
-	Date   string  `json:"date"`
-	Amount float64 `json:"amount"`
-	Memo   string  `json:"memo"`
+	ID        string  `json:"id"`
+	Kind      string  `json:"kind"`
+	Number    string  `json:"number,omitempty"`
+	Status    string  `json:"status"`
+	Date      string  `json:"date"`
+	DueDate   *string `json:"dueDate,omitempty"`
+	Amount    float64 `json:"amount"`
+	Memo      string  `json:"memo"`
+	ContactID *string `json:"contactId,omitempty"`
+	IsMonthly bool    `json:"isMonthly,omitempty"`
 }
 
 type accountInfo struct {
@@ -335,13 +339,22 @@ func documentDate(date string) (string, error) {
 }
 
 // DocumentToAPI maps a DB document row to API shape.
-func DocumentToAPI(id, docType, status, date, totalAmount string, description *string, metadata []byte) DocumentAPI {
+func DocumentToAPI(id, docType, status, date, totalAmount string, description *string, metadata []byte, contactID *string) DocumentAPI {
+	return DocumentToAPIFull(id, docType, "", status, date, nil, totalAmount, description, metadata, contactID)
+}
+
+// DocumentToAPIFull maps a DB document row including number and due date.
+func DocumentToAPIFull(id, docType, number, status, date string, dueDate *string, totalAmount string, description *string, metadata []byte, contactID *string) DocumentAPI {
 	kind := docType
+	isMonthly := false
 	if len(metadata) > 0 {
 		var m map[string]any
 		if json.Unmarshal(metadata, &m) == nil {
 			if k, ok := m["kind"].(string); ok && k != "" {
 				kind = k
+			}
+			if v, ok := m["isMonthly"].(bool); ok {
+				isMonthly = v
 			}
 		}
 	}
@@ -351,11 +364,15 @@ func DocumentToAPI(id, docType, status, date, totalAmount string, description *s
 	}
 	f, _ := strconv.ParseFloat(totalAmount, 64)
 	return DocumentAPI{
-		ID:     id,
-		Kind:   kind,
-		Status: status,
-		Date:   date,
-		Amount: math.Round(f),
-		Memo:   memo,
+		ID:        id,
+		Kind:      kind,
+		Number:    number,
+		Status:    status,
+		Date:      date,
+		DueDate:   dueDate,
+		Amount:    math.Round(f),
+		Memo:      memo,
+		ContactID: contactID,
+		IsMonthly: isMonthly,
 	}
 }

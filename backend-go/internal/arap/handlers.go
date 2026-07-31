@@ -30,6 +30,7 @@ func (s *Service) Routes() chi.Router {
 	r.Get("/open-items", s.listOpenItems)
 	r.Post("/invoice", s.createInvoice)
 	r.Post("/receipt", s.createReceipt)
+	r.Post("/receipt/complete", s.completeReceipt)
 	r.Post("/loan-in", s.createLoanIn)
 	r.Post("/loan-payment", s.createLoanPayment)
 	return r
@@ -42,6 +43,7 @@ func (s *Service) Mount(r chi.Router) {
 		r.Get("/open-items", s.listOpenItems)
 		r.Post("/invoice", s.createInvoice)
 		r.Post("/receipt", s.createReceipt)
+		r.Post("/receipt/complete", s.completeReceipt)
 		r.Post("/loan-in", s.createLoanIn)
 		r.Post("/loan-payment", s.createLoanPayment)
 	})
@@ -66,7 +68,8 @@ func (s *Service) listOpenItems(w http.ResponseWriter, r *http.Request) {
 			"kind must be receivable or payable"))
 		return
 	}
-	items, err := ListOpenItems(r.Context(), s.db, orgID, kind)
+	contactID := r.URL.Query().Get("contactId")
+	items, err := ListOpenItems(r.Context(), s.db, orgID, kind, contactID)
 	if err != nil {
 		writeAPIError(w, err)
 		return
@@ -86,11 +89,13 @@ type arapBody struct {
 	CashAccountID string  `json:"cashAccountId"`
 	OpenItemID    string  `json:"openItemId"`
 	DocumentID    string  `json:"documentId"`
+	IsMonthly     bool    `json:"isMonthly"`
+	Complete      bool    `json:"complete"`
 }
 
 func (s *Service) decodeBody(w http.ResponseWriter, r *http.Request) (arapBody, bool) {
 	var body arapBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Amount <= 0 {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid document body"))
 		return body, false
 	}
@@ -123,6 +128,8 @@ func (s *Service) toInput(userID, orgID string, body arapBody) DocumentInput {
 		CashAccountID: body.CashAccountID,
 		OpenItemID:    body.OpenItemID,
 		DocumentID:    body.DocumentID,
+		IsMonthly:     body.IsMonthly,
+		Complete:      body.Complete,
 	}
 }
 
@@ -133,6 +140,10 @@ func (s *Service) createInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 	body, ok := s.decodeBody(w, r)
 	if !ok {
+		return
+	}
+	if body.Amount <= 0 {
+		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid document body"))
 		return
 	}
 	doc, err := CreateInvoice(r.Context(), s.db, s.toInput(userID, orgID, body))
@@ -157,6 +168,33 @@ func (s *Service) createReceipt(w http.ResponseWriter, r *http.Request) {
 			"openItemId or documentId is required"))
 		return
 	}
+	if !body.Complete && body.Amount <= 0 {
+		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid document body"))
+		return
+	}
+	doc, err := CreateReceipt(r.Context(), s.db, s.toInput(userID, orgID, body))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	platform.JSON(w, http.StatusCreated, map[string]any{"document": doc})
+}
+
+func (s *Service) completeReceipt(w http.ResponseWriter, r *http.Request) {
+	userID, orgID, ok := s.assertPost(w, r)
+	if !ok {
+		return
+	}
+	body, ok := s.decodeBody(w, r)
+	if !ok {
+		return
+	}
+	if body.OpenItemID == "" && body.DocumentID == "" {
+		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR",
+			"openItemId or documentId is required"))
+		return
+	}
+	body.Complete = true
 	doc, err := CreateReceipt(r.Context(), s.db, s.toInput(userID, orgID, body))
 	if err != nil {
 		writeAPIError(w, err)
@@ -172,6 +210,10 @@ func (s *Service) createLoanIn(w http.ResponseWriter, r *http.Request) {
 	}
 	body, ok := s.decodeBody(w, r)
 	if !ok {
+		return
+	}
+	if body.Amount <= 0 {
+		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid document body"))
 		return
 	}
 	doc, err := CreateLoanIn(r.Context(), s.db, s.toInput(userID, orgID, body))
@@ -194,6 +236,10 @@ func (s *Service) createLoanPayment(w http.ResponseWriter, r *http.Request) {
 	if body.OpenItemID == "" && body.DocumentID == "" {
 		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR",
 			"openItemId or documentId is required"))
+		return
+	}
+	if body.Amount <= 0 {
+		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR", "Invalid document body"))
 		return
 	}
 	doc, err := CreateLoanPayment(r.Context(), s.db, s.toInput(userID, orgID, body))

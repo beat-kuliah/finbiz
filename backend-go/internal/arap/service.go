@@ -46,17 +46,23 @@ type DocumentInput struct {
 	OpenItemID    string
 	DocumentID    string
 	CashAccountID string
+	IsMonthly     bool
+	Complete      bool // when true on receipt: pay full remaining balance
 }
 
 // DocumentResult is the ARAP document API shape.
 type DocumentResult struct {
-	ID         string  `json:"id"`
-	Kind       string  `json:"kind"`
-	Status     string  `json:"status"`
-	Date       string  `json:"date"`
-	Amount     float64 `json:"amount"`
-	Memo       string  `json:"memo"`
-	OpenItemID *string `json:"openItemId,omitempty"`
+	ID            string  `json:"id"`
+	Kind          string  `json:"kind"`
+	Status        string  `json:"status"`
+	Date          string  `json:"date"`
+	DueDate       *string `json:"dueDate,omitempty"`
+	Number        string  `json:"number,omitempty"`
+	Amount        float64 `json:"amount"`
+	Memo          string  `json:"memo"`
+	IsMonthly     bool    `json:"isMonthly,omitempty"`
+	OpenItemID    *string `json:"openItemId,omitempty"`
+	NextInvoiceID *string `json:"nextInvoiceId,omitempty"`
 }
 
 // OpenItemRow is a listed open item.
@@ -65,11 +71,13 @@ type OpenItemRow struct {
 	Type           string  `json:"type"`
 	ContactID      *string `json:"contactId"`
 	DocumentID     *string `json:"documentId"`
+	DocumentNumber *string `json:"documentNumber,omitempty"`
 	Description    string  `json:"description"`
 	OriginalAmount float64 `json:"originalAmount"`
 	BalanceAmount  float64 `json:"balanceAmount"`
 	DueDate        *string `json:"dueDate"`
 	Status         string  `json:"status"`
+	IsMonthly      bool    `json:"isMonthly"`
 	CreatedAt      string  `json:"createdAt"`
 }
 
@@ -220,28 +228,197 @@ func updateOpenItemStatus(balance, original float64) string {
 	return "open"
 }
 
-func reduceOpenItem(ctx context.Context, tx pgx.Tx, item *openItemRecord, paymentAmount float64) error {
+func reduceOpenItem(ctx context.Context, tx pgx.Tx, item *openItemRecord, paymentAmount float64) (newBalance float64, status string, err error) {
 	if paymentAmount > item.BalanceAmount+0.01 {
-		return platform.NewApiError(http.StatusBadRequest, "INVALID_AMOUNT",
+		return 0, "", platform.NewApiError(http.StatusBadRequest, "INVALID_AMOUNT",
 			"Payment exceeds open item balance")
 	}
-	newBalance := ledger.Round2(item.BalanceAmount - paymentAmount)
+	newBalance = ledger.Round2(item.BalanceAmount - paymentAmount)
 	if newBalance < 0 {
 		newBalance = 0
 	}
-	status := updateOpenItemStatus(newBalance, item.OriginalAmount)
-	_, err := tx.Exec(ctx, `
+	status = updateOpenItemStatus(newBalance, item.OriginalAmount)
+	_, err = tx.Exec(ctx, `
 		UPDATE open_items SET balance_amount = $1, status = $2 WHERE id = $3
 	`, formatAmt(newBalance), status, item.ID)
-	return err
+	return newBalance, status, err
+}
+
+// addMonths keeps the same day-of-month when possible (clamps to last day).
+func addMonths(dateStr string, months int) (string, error) {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return "", err
+	}
+	day := t.Day()
+	first := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, months, 0)
+	lastDay := time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(first.Year(), first.Month(), day, 0, 0, 0, 0, time.UTC).Format("2006-01-02"), nil
+}
+
+func metaBool(m map[string]any, key string) bool {
+	v, ok := m[key]
+	if !ok {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return strings.EqualFold(t, "true") || t == "1"
+	default:
+		return false
+	}
+}
+
+type invoiceRenewalSource struct {
+	Amount    float64
+	Memo      string
+	ContactID *string
+	Date      string
+	DueDate   *string
+	IsMonthly bool
+	Active    bool
+}
+
+func loadInvoiceRenewal(ctx context.Context, tx pgx.Tx, orgID, documentID string) (*invoiceRenewalSource, error) {
+	var (
+		totalS string
+		desc   *string
+		date   string
+		due    *string
+		cid    *string
+		meta   []byte
+	)
+	err := tx.QueryRow(ctx, `
+		SELECT total_amount::text, description, date::text, due_date::text, contact_id, metadata
+		FROM documents
+		WHERE id = $1 AND org_id = $2 AND type = 'invoice'
+	`, documentID, orgID).Scan(&totalS, &desc, &date, &due, &cid, &meta)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	amount, _ := strconv.ParseFloat(totalS, 64)
+	memo := ""
+	if desc != nil {
+		memo = *desc
+	}
+	src := &invoiceRenewalSource{
+		Amount:    amount,
+		Memo:      memo,
+		ContactID: cid,
+		Date:      date,
+		DueDate:   due,
+	}
+	if len(meta) > 0 {
+		var m map[string]any
+		if json.Unmarshal(meta, &m) == nil {
+			src.IsMonthly = metaBool(m, "isMonthly")
+			if _, ok := m["monthlyActive"]; ok {
+				src.Active = metaBool(m, "monthlyActive")
+			} else {
+				src.Active = src.IsMonthly
+			}
+		}
+	}
+	return src, nil
+}
+
+func createRenewalInvoice(
+	ctx context.Context,
+	tx pgx.Tx,
+	db *pgxpool.Pool,
+	orgID, userID string,
+	src *invoiceRenewalSource,
+	piutangID, pendapatanID string,
+) (string, error) {
+	nextDate, err := addMonths(src.Date, 1)
+	if err != nil {
+		return "", err
+	}
+	var nextDue *string
+	if src.DueDate != nil && *src.DueDate != "" {
+		d, err := addMonths(*src.DueDate, 1)
+		if err != nil {
+			return "", err
+		}
+		nextDue = &d
+	} else {
+		d, err := addMonths(src.Date, 1)
+		if err != nil {
+			return "", err
+		}
+		nextDue = &d
+	}
+
+	memo := src.Memo
+	if memo == "" {
+		memo = defaultMemo(KindInvoice)
+	}
+
+	number, err := ledger.NextDocumentNumber(ctx, tx, orgID, ledger.DocInvoice)
+	if err != nil {
+		return "", err
+	}
+
+	meta := map[string]any{
+		"kind":          string(KindInvoice),
+		"isMonthly":     true,
+		"monthlyActive": true,
+	}
+	metaBytes, _ := json.Marshal(meta)
+
+	var docID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO documents (org_id, type, number, contact_id, date, due_date, status, description, total_amount, metadata)
+		VALUES ($1, 'invoice', $2, $3, $4, $5, 'posted', $6, $7, $8)
+		RETURNING id
+	`, orgID, number, src.ContactID, nextDate, nextDue, memo, formatAmt(src.Amount), metaBytes,
+	).Scan(&docID)
+	if err != nil {
+		return "", err
+	}
+
+	entryDate, err := time.Parse("2006-01-02", nextDate)
+	if err != nil {
+		return "", platform.NewApiError(http.StatusBadRequest, "INVALID_DATE", "Date must be YYYY-MM-DD")
+	}
+	uid := userID
+	_, err = ledger.PostJournal(ctx, db, ledger.PostJournalInput{
+		OrgID:       orgID,
+		Date:        entryDate,
+		Description: memo,
+		Lines: []ledger.JournalLineInput{
+			{AccountID: piutangID, Debit: src.Amount},
+			{AccountID: pendapatanID, Credit: src.Amount},
+		},
+		DocumentID: &docID,
+		UserID:     &uid,
+		Tx:         tx,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO open_items (org_id, type, contact_id, document_id, description,
+			original_amount, balance_amount, due_date, status)
+		VALUES ($1, 'receivable', $2, $3, $4, $5, $6, $7, 'open')
+	`, orgID, src.ContactID, docID, memo, formatAmt(src.Amount), formatAmt(src.Amount), nextDue)
+	if err != nil {
+		return "", err
+	}
+	return docID, nil
 }
 
 // CreateArapDocument creates an invoice, receipt, loan_in, or loan_payment.
 func CreateArapDocument(ctx context.Context, db *pgxpool.Pool, kind DocumentKind, input DocumentInput) (*DocumentResult, error) {
-	amount, err := ledger.ParseAmount(input.Amount)
-	if err != nil {
-		return nil, err
-	}
 	dateStr, err := ledger.ParseDate(input.Date)
 	if err != nil {
 		return nil, err
@@ -296,6 +473,15 @@ func CreateArapDocument(ctx context.Context, db *pgxpool.Pool, kind DocumentKind
 		}
 	}
 
+	amount := input.Amount
+	if input.Complete && openItemToReduce != nil {
+		amount = openItemToReduce.BalanceAmount
+	}
+	amount, err = ledger.ParseAmount(amount)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, err := db.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -316,15 +502,26 @@ func CreateArapDocument(ctx context.Context, db *pgxpool.Pool, kind DocumentKind
 
 	var dueDate *string
 	if input.DueDate != "" {
-		dueDate = &input.DueDate
+		parsedDue, err := ledger.ParseDate(input.DueDate)
+		if err != nil {
+			return nil, err
+		}
+		dueDate = &parsedDue
 	}
 
 	meta := map[string]any{"kind": string(kind)}
+	if kind == KindInvoice && input.IsMonthly {
+		meta["isMonthly"] = true
+		meta["monthlyActive"] = true
+	}
 	if input.OpenItemID != "" {
 		meta["openItemId"] = input.OpenItemID
 	}
 	if input.DocumentID != "" {
 		meta["sourceDocumentId"] = input.DocumentID
+	}
+	if openItemToReduce != nil && openItemToReduce.DocumentID != nil {
+		meta["sourceDocumentId"] = *openItemToReduce.DocumentID
 	}
 	metaBytes, _ := json.Marshal(meta)
 
@@ -399,11 +596,28 @@ func CreateArapDocument(ctx context.Context, db *pgxpool.Pool, kind DocumentKind
 		openItemID = &oid
 	}
 
+	var nextInvoiceID *string
 	if openItemToReduce != nil {
-		if err := reduceOpenItem(ctx, tx, openItemToReduce, amount); err != nil {
+		newBal, itemStatus, err := reduceOpenItem(ctx, tx, openItemToReduce, amount)
+		if err != nil {
 			return nil, err
 		}
+		_ = newBal
 		openItemID = &openItemToReduce.ID
+
+		if kind == KindReceipt && itemStatus == "closed" && openItemToReduce.DocumentID != nil {
+			src, err := loadInvoiceRenewal(ctx, tx, input.OrgID, *openItemToReduce.DocumentID)
+			if err != nil {
+				return nil, err
+			}
+			if src != nil && src.IsMonthly && src.Active {
+				nid, err := createRenewalInvoice(ctx, tx, db, input.OrgID, input.UserID, src, piutangID, pendapatanID)
+				if err != nil {
+					return nil, err
+				}
+				nextInvoiceID = &nid
+			}
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -415,13 +629,17 @@ func CreateArapDocument(ctx context.Context, db *pgxpool.Pool, kind DocumentKind
 		outMemo = *docDesc
 	}
 	return &DocumentResult{
-		ID:         docID,
-		Kind:       string(kind),
-		Status:     status,
-		Date:       docDate,
-		Amount:     math.Round(amount),
-		Memo:       outMemo,
-		OpenItemID: openItemID,
+		ID:            docID,
+		Kind:          string(kind),
+		Status:        status,
+		Date:          docDate,
+		DueDate:       dueDate,
+		Number:        number,
+		Amount:        math.Round(amount),
+		Memo:          outMemo,
+		IsMonthly:     kind == KindInvoice && input.IsMonthly,
+		OpenItemID:    openItemID,
+		NextInvoiceID: nextInvoiceID,
 	}, nil
 }
 
@@ -445,15 +663,23 @@ func CreateLoanPayment(ctx context.Context, db *pgxpool.Pool, input DocumentInpu
 	return CreateArapDocument(ctx, db, KindLoanPayment, input)
 }
 
-// ListOpenItems lists open items for a kind.
-func ListOpenItems(ctx context.Context, db *pgxpool.Pool, orgID string, kind OpenItemKind) ([]OpenItemRow, error) {
-	rows, err := db.Query(ctx, `
-		SELECT id, type, contact_id, document_id, description,
-			original_amount::text, balance_amount::text, due_date::text, status, created_at
-		FROM open_items
-		WHERE org_id = $1 AND type = $2
-		ORDER BY due_date NULLS LAST, created_at
-	`, orgID, string(kind))
+// ListOpenItems lists open items for a kind, optionally filtered by contactID.
+func ListOpenItems(ctx context.Context, db *pgxpool.Pool, orgID string, kind OpenItemKind, contactID string) ([]OpenItemRow, error) {
+	q := `
+		SELECT oi.id, oi.type, oi.contact_id, oi.document_id, d.number, oi.description,
+			oi.original_amount::text, oi.balance_amount::text, oi.due_date::text, oi.status,
+			d.metadata, oi.created_at
+		FROM open_items oi
+		LEFT JOIN documents d ON d.id = oi.document_id
+		WHERE oi.org_id = $1 AND oi.type = $2`
+	args := []any{orgID, string(kind)}
+	if contactID != "" {
+		q += ` AND oi.contact_id = $3`
+		args = append(args, contactID)
+	}
+	q += ` ORDER BY oi.due_date NULLS LAST, oi.created_at`
+
+	rows, err := db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -462,19 +688,26 @@ func ListOpenItems(ctx context.Context, db *pgxpool.Pool, orgID string, kind Ope
 	items := []OpenItemRow{}
 	for rows.Next() {
 		var (
-			row                   OpenItemRow
-			origS, balS           string
-			createdAt             time.Time
+			row         OpenItemRow
+			origS, balS string
+			meta        []byte
+			createdAt   time.Time
 		)
 		if err := rows.Scan(
-			&row.ID, &row.Type, &row.ContactID, &row.DocumentID, &row.Description,
-			&origS, &balS, &row.DueDate, &row.Status, &createdAt,
+			&row.ID, &row.Type, &row.ContactID, &row.DocumentID, &row.DocumentNumber, &row.Description,
+			&origS, &balS, &row.DueDate, &row.Status, &meta, &createdAt,
 		); err != nil {
 			return nil, err
 		}
 		row.OriginalAmount, _ = strconv.ParseFloat(origS, 64)
 		row.BalanceAmount, _ = strconv.ParseFloat(balS, 64)
 		row.CreatedAt = createdAt.UTC().Format(time.RFC3339Nano)
+		if len(meta) > 0 {
+			var m map[string]any
+			if json.Unmarshal(meta, &m) == nil {
+				row.IsMonthly = metaBool(m, "isMonthly")
+			}
+		}
 		items = append(items, row)
 	}
 	return items, rows.Err()

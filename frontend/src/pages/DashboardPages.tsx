@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { DataRow, DataTable, Td } from "@/components/ui/DataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, TextInput, TextSelect } from "@/components/ui/Field";
 import { ApiError, apiJson, formatIDR } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 
@@ -42,20 +45,25 @@ export function OnboardingPage() {
 
   return (
     <div className="min-h-screen grid place-items-center px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-lg bg-paper-card border border-sand rounded-lg p-8">
-        <h1 className="font-display text-3xl text-pine-dark mb-2">Onboarding bisnis</h1>
-        <p className="text-ink-faint mb-6">Kami akan seed bagan akun UMKM standar Indonesia.</p>
-        <label className="block text-sm mb-1">Nama bisnis / PT</label>
-        <input className="w-full mb-4 rounded border border-sand px-3 py-2" required value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="block text-sm mb-1">Jenis usaha</label>
-        <select className="w-full mb-4 rounded border border-sand px-3 py-2" value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
-          <option value="umkm">UMKM umum</option>
-          <option value="dagang">Dagang</option>
-          <option value="jasa">Jasa</option>
-        </select>
-        <label className="block text-sm mb-1">Saldo kas awal (opsional, rupiah)</label>
-        <input className="w-full mb-6 rounded border border-sand px-3 py-2" value={openingCash} onChange={(e) => setOpeningCash(e.target.value)} />
-        <button disabled={busy} className="w-full bg-pine text-white rounded py-2.5 font-medium">
+      <form onSubmit={onSubmit} className="w-full max-w-lg bg-paper-card border border-sand rounded-lg p-8 space-y-4">
+        <div>
+          <h1 className="font-display text-3xl text-pine-dark mb-2">Onboarding bisnis</h1>
+          <p className="text-ink-faint">Kami akan seed bagan akun UMKM standar Indonesia.</p>
+        </div>
+        <Field label="Nama bisnis / PT">
+          <TextInput required value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Jenis usaha">
+          <TextSelect value={businessType} onChange={(e) => setBusinessType(e.target.value)}>
+            <option value="umkm">UMKM umum</option>
+            <option value="dagang">Dagang</option>
+            <option value="jasa">Jasa</option>
+          </TextSelect>
+        </Field>
+        <Field label="Saldo kas awal (opsional, rupiah)">
+          <TextInput value={openingCash} onChange={(e) => setOpeningCash(e.target.value)} placeholder="0" />
+        </Field>
+        <button disabled={busy} className="w-full bg-pine text-white rounded-lg py-2.5 font-medium disabled:opacity-50">
           {busy ? "Menyiapkan…" : "Selesai"}
         </button>
       </form>
@@ -66,6 +74,7 @@ export function OnboardingPage() {
 export function DashboardPage() {
   const { activeOrgId, orgs, loadOrgs } = useAuth();
   const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
   const [consol, setConsol] = useState<{
     organizations: { name: string; cash: number; revenue: number; netIncome: number }[];
     totals: { cash: number; revenue: number; netIncome: number };
@@ -77,7 +86,16 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!activeOrgId) return;
-    void apiJson<Record<string, number>>("/api/dashboard", {}, activeOrgId).then(setSummary).catch(() => setSummary(null));
+    setSummaryError(false);
+    void apiJson<Record<string, number>>("/api/dashboard", {}, activeOrgId)
+      .then((s) => {
+        setSummary(s);
+        setSummaryError(false);
+      })
+      .catch(() => {
+        setSummary(null);
+        setSummaryError(true);
+      });
   }, [activeOrgId]);
 
   useEffect(() => {
@@ -106,6 +124,7 @@ export function DashboardPage() {
         <h1 className="font-display text-3xl text-ink">{orgName}</h1>
         <p className="text-ink-faint">Ringkasan periode berjalan</p>
       </div>
+      {summaryError && <EmptyState>Gagal memuat ringkasan. Coba muat ulang.</EmptyState>}
       {summary && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
@@ -123,30 +142,41 @@ export function DashboardPage() {
           ))}
         </div>
       )}
+      {!summary && !summaryError && <EmptyState>Memuat ringkasan…</EmptyState>}
       {consol && consol.organizations.length > 1 && (
-        <section>
-          <h2 className="font-display text-2xl mb-3">Agregat semua PT (owner)</h2>
-          <div className="grid sm:grid-cols-3 gap-4 mb-4">
-            <div className="bg-pine/10 rounded-lg p-4">
-              <div className="text-sm">Total kas</div>
+        <section className="space-y-4">
+          <h2 className="font-display text-2xl">Agregat semua PT (owner)</h2>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className="bg-paper-card border border-sand rounded-lg p-4">
+              <div className="text-sm text-ink-faint">Total kas</div>
               <div className="text-lg font-semibold">{formatIDR(consol.totals.cash)}</div>
             </div>
-            <div className="bg-pine/10 rounded-lg p-4">
-              <div className="text-sm">Total pendapatan</div>
+            <div className="bg-paper-card border border-sand rounded-lg p-4">
+              <div className="text-sm text-ink-faint">Total pendapatan</div>
               <div className="text-lg font-semibold">{formatIDR(consol.totals.revenue)}</div>
             </div>
-            <div className="bg-pine/10 rounded-lg p-4">
-              <div className="text-sm">Total laba</div>
+            <div className="bg-paper-card border border-sand rounded-lg p-4">
+              <div className="text-sm text-ink-faint">Total laba</div>
               <div className="text-lg font-semibold">{formatIDR(consol.totals.netIncome)}</div>
             </div>
           </div>
-          <ul className="text-sm space-y-1 text-ink-muted">
+          <DataTable
+            headers={[
+              { label: "Bisnis" },
+              { label: "Kas", align: "right" },
+              { label: "Pendapatan", align: "right" },
+              { label: "Laba", align: "right" },
+            ]}
+          >
             {consol.organizations.map((o) => (
-              <li key={o.name}>
-                {o.name}: kas {formatIDR(o.cash)} · pendapatan {formatIDR(o.revenue)}
-              </li>
+              <DataRow key={o.name}>
+                <Td>{o.name}</Td>
+                <Td align="right">{formatIDR(o.cash)}</Td>
+                <Td align="right">{formatIDR(o.revenue)}</Td>
+                <Td align="right">{formatIDR(o.netIncome)}</Td>
+              </DataRow>
             ))}
-          </ul>
+          </DataTable>
         </section>
       )}
     </div>
