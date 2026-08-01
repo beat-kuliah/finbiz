@@ -4,31 +4,31 @@ overview: Tiga app terpisah — frontend, backend, frontend-admin — akuntansi 
 todos:
   - id: p0-contracts
     content: "P0: scaffold frontend/ + backend/ + frontend-admin/; schema; contracts; CORS; Makefile secrets"
-    status: in_progress
+    status: completed
   - id: w1-auth-orgs
     content: "W1 Auth/Orgs/Seats: JWT+Redis, invite, roles; trial dari app_settings"
-    status: pending
+    status: completed
   - id: w2-ledger-core
     content: "W2 Ledger: journal engine, cash/capital, void, balances, doc numbering"
-    status: pending
+    status: completed
   - id: w3-arap
     content: "W3 AR/AP: open_items, partial, aging, PDF invoice pelanggan"
-    status: pending
+    status: completed
   - id: w4-assets
     content: "W4 Assets: fixed assets, dispose, straight-line depreciation"
-    status: pending
+    status: completed
   - id: w5-reports
     content: "W5 Reports: P&L/BS/TB/cash-flow, export, period close, dashboard"
-    status: pending
+    status: completed
   - id: w6-fe-tenant
     content: "W6 frontend/: app tenant — pages, pricing API, paywall, billing, license"
     status: pending
   - id: w7-billing-selfhost
     content: "W7 Billing: Midtrans, change/cancel, entitlements dari plan_catalog"
-    status: pending
+    status: completed
   - id: w8-saas-ops
     content: "W8 SaaS ops: SMTP mail, banners, usage, audit tenant, data export"
-    status: pending
+    status: completed
   - id: w9-platform-admin
     content: "W9 frontend-admin/ + /api/platform: monitor, edit trial/harga, CS actions"
     status: pending
@@ -44,9 +44,10 @@ isProject: false
 
 ```
 finbiz/
-  frontend/          # App pelanggan/tenant (React+Vite) — port 5173
-  frontend-admin/    # App platform admin (React+Vite) — port 5174
-  backend/           # API Hono — port 8080
+  frontend/              # App pelanggan/tenant (React+Vite) — port 5173
+  frontend-admin/        # App platform admin (React+Vite) — port 5174
+  backend-go/            # API Go (Chi + pgx + golang-migrate) — port 8080
+  backend-ts-archive/    # Arsip Hono/TS (tidak dipakai runtime)
   docs/PLAN.md
   README.md
 ```
@@ -55,7 +56,9 @@ finbiz/
 |-----|----------|---------|-----------|
 | `frontend` | User bisnis / UMKM | `http://localhost:5173` | Vite proxy `/api` → `:8080` |
 | `frontend-admin` | Operator SaaS | `http://localhost:5174` | Vite proxy `/api` → `:8080` |
-| `backend` | Shared API | `http://localhost:8080` | Postgres + Redis |
+| `backend-go` | Shared API (modular monolith) | `http://localhost:8080` | Postgres + Redis |
+
+**Backend stack:** Go modular monolith (`cmd/api` + `cmd/worker`), migrasi **golang-migrate**, siap dipecah microservice nanti di batas domain `billing` / `reports` / `worker`.
 
 - **Tidak** ada route `/platform` di dalam `frontend` tenant.
 - Admin adalah **SPA terpisah** (deploy domain berbeda di production, mis. `app.finbiz.id` vs `admin.finbiz.id`).
@@ -152,13 +155,15 @@ Catatan:
 flowchart LR
   FE[frontend_5173]
   ADM[frontend_admin_5174]
-  BE[backend_8080]
+  API[backend_go_api_8080]
+  WRK[backend_go_worker]
   PG[(Postgres)]
   RD[(Redis)]
-  FE -->|/api tenant| BE
-  ADM -->|/api platform| BE
-  BE --> PG
-  BE --> RD
+  FE -->|/api tenant| API
+  ADM -->|/api platform| API
+  API --> PG
+  API --> RD
+  WRK --> PG
 ```
 
 ---
@@ -226,15 +231,15 @@ flowchart TB
 | WS | Path boleh disentuh |
 |----|---------------------|
 | P0 | scaffold ketiga folder, schema, docs/api.md, CORS |
-| W1 | `backend/src/modules/auth`, `orgs` |
-| W2 | `backend/.../ledger`, `documents`, `accounts` |
-| W3 | `backend/.../arap`, `contacts` |
-| W4 | `backend/.../assets` |
-| W5 | `backend/.../reports`, `periods`, `dashboard` |
+| W1 | `backend-go/internal/auth`, `orgs` |
+| W2 | `backend-go/internal/ledger` |
+| W3 | `backend-go/internal/arap`, `contacts` |
+| W4 | `backend-go/internal/assets` |
+| W5 | `backend-go/internal/reports` (+ periods di ledger) |
 | W6 | **`frontend/**` saja** |
-| W7 | `backend/.../billing`, `entitlements`, `license` |
-| W8 | `backend/.../saas` + `backend/.../mail` (SMTP, templates, usage, audit, export, banners) |
-| W9 | **`frontend-admin/**` + `backend/.../platform`** |
+| W7 | `backend-go/internal/billing` |
+| W8 | `backend-go/internal/mail` + `cmd/worker` |
+| W9 | **`frontend-admin/**` + `backend-go/internal/admin`** |
 
 - W2 saja `postJournal`
 - W7 user checkout; W9 settings/catalog/CS

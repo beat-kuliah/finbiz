@@ -9,7 +9,9 @@ import {
   BillingPage,
   CapitalPage,
   CashPage,
+  ContactDetailPage,
   ContactsPage,
+  InvoicePrintPage,
   JournalsPage,
   PayablesPage,
   ReceivablesPage,
@@ -41,6 +43,7 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/invoices/:id/print" element={<InvoicePrintPage />} />
             <Route element={<AppShell />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
@@ -53,6 +56,7 @@ export default function App() {
               <Route path="/journals" element={<JournalsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/contacts" element={<ContactsPage />} />
+              <Route path="/contacts/:id" element={<ContactDetailPage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>

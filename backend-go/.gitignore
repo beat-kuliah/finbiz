@@ -1,0 +1,19 @@
+# Binaries
+/bin/
+/api
+/worker
+/seed
+/migrate
+
+# Env
+.env
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Coverage
+coverage.out
+*.test
