@@ -648,6 +648,124 @@ func CreateInvoice(ctx context.Context, db *pgxpool.Pool, input DocumentInput) (
 	return CreateArapDocument(ctx, db, KindInvoice, input)
 }
 
+// CancelMonthlyInvoice hard-deletes an unpaid monthly invoice (document + journal + open item).
+// Rejects if any payment has been applied. Stops the auto-renew chain until a new monthly invoice is created.
+func CancelMonthlyInvoice(ctx context.Context, db *pgxpool.Pool, orgID, documentID string) (map[string]any, error) {
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var (
+		docType, status, number string
+		meta                    []byte
+		totalS                  string
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT type, status, number, total_amount::text, metadata
+		FROM documents
+		WHERE id = $1 AND org_id = $2
+	`, documentID, orgID).Scan(&docType, &status, &number, &totalS, &meta)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, platform.NewApiError(http.StatusNotFound, "DOCUMENT_NOT_FOUND", "Invoice not found")
+		}
+		return nil, err
+	}
+	if docType != string(ledger.DocInvoice) {
+		return nil, platform.NewApiError(http.StatusBadRequest, "NOT_INVOICE", "Document is not an invoice")
+	}
+	if status != "posted" {
+		return nil, platform.NewApiError(http.StatusBadRequest, "INVOICE_NOT_POSTED", "Only posted invoices can be canceled")
+	}
+
+	isMonthly := false
+	if len(meta) > 0 {
+		var m map[string]any
+		if json.Unmarshal(meta, &m) == nil {
+			isMonthly = metaBool(m, "isMonthly")
+		}
+	}
+	if !isMonthly {
+		return nil, platform.NewApiError(http.StatusBadRequest, "NOT_MONTHLY", "Invoice is not a monthly bill")
+	}
+
+	var (
+		openItemID, oiStatus string
+		origS, balS          string
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT id, status, original_amount::text, balance_amount::text
+		FROM open_items
+		WHERE org_id = $1 AND document_id = $2
+	`, orgID, documentID).Scan(&openItemID, &oiStatus, &origS, &balS)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, platform.NewApiError(http.StatusBadRequest, "OPEN_ITEM_NOT_FOUND", "No open item for this invoice")
+		}
+		return nil, err
+	}
+	if oiStatus != "open" {
+		return nil, platform.NewApiError(http.StatusBadRequest, "INVOICE_NOT_OPEN",
+			"Invoice already has payments or is closed — cannot cancel")
+	}
+	orig, _ := strconv.ParseFloat(origS, 64)
+	bal, _ := strconv.ParseFloat(balS, 64)
+	if math.Abs(orig-bal) > 0.009 {
+		return nil, platform.NewApiError(http.StatusBadRequest, "INVOICE_HAS_PAYMENTS",
+			"Invoice already has payments — cannot cancel")
+	}
+
+	var receiptCount int
+	err = tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM documents
+		WHERE org_id = $1 AND type = 'receipt'
+		  AND (
+		    COALESCE(metadata->>'openItemId', '') = $2
+		    OR COALESCE(metadata->>'sourceDocumentId', '') = $3
+		  )
+	`, orgID, openItemID, documentID).Scan(&receiptCount)
+	if err != nil {
+		return nil, err
+	}
+	if receiptCount > 0 {
+		return nil, platform.NewApiError(http.StatusBadRequest, "INVOICE_HAS_PAYMENTS",
+			"Invoice already has payments — cannot cancel")
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM open_items WHERE org_id = $1 AND document_id = $2
+	`, orgID, documentID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM journal_entries WHERE org_id = $1 AND document_id = $2
+	`, orgID, documentID); err != nil {
+		return nil, err
+	}
+	tag, err := tx.Exec(ctx, `
+		DELETE FROM documents WHERE id = $1 AND org_id = $2
+	`, documentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, platform.NewApiError(http.StatusNotFound, "DOCUMENT_NOT_FOUND", "Invoice not found")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	amount, _ := strconv.ParseFloat(totalS, 64)
+	return map[string]any{
+		"id":     documentID,
+		"number": number,
+		"amount": math.Round(amount),
+	}, nil
+}
+
 // CreateReceipt applies a receivable receipt.
 func CreateReceipt(ctx context.Context, db *pgxpool.Pool, input DocumentInput) (*DocumentResult, error) {
 	return CreateArapDocument(ctx, db, KindReceipt, input)

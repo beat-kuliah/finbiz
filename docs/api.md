@@ -165,11 +165,15 @@ Query (list): `contactId` (optional UUID) — filter documents linked to a conta
 |--------|------|------|-------------|
 | GET | `/api/open-items` | Bearer+Org | List open items |
 | POST | `/api/invoice` | Bearer+Org | Create AR invoice |
+| POST | `/api/invoice/:id/cancel-monthly` | Bearer+Org | Cancel unpaid monthly invoice (hard-delete document + journal + open item; stops auto-renew) |
 | POST | `/api/receipt` | Bearer+Org | Record receipt against AR |
+| POST | `/api/receipt/complete` | Bearer+Org | Pay full remaining balance; renews monthly invoice if flagged |
 | POST | `/api/loan-in` | Bearer+Org | Record loan received |
 | POST | `/api/loan-payment` | Bearer+Org | Loan repayment |
 
 Query (`GET /api/open-items`): `kind` = `receivable` \| `payable` (default `receivable`); `contactId` (optional UUID) — filter by contact.
+
+`POST /api/invoice/:id/cancel-monthly` requires a posted monthly invoice with open balance equal to original (no receipts). Response: `{ canceled: { id, number, amount } }`.
 
 ---
 

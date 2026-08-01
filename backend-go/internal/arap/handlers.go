@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/icus/finbiz/backend-go/internal/audit"
 	"github.com/icus/finbiz/backend-go/internal/auth"
 	"github.com/icus/finbiz/backend-go/internal/billing"
 	"github.com/icus/finbiz/backend-go/internal/platform"
@@ -29,6 +30,7 @@ func (s *Service) Routes() chi.Router {
 	r.Use(s.auth.RequireAuth, s.auth.RequireOrg)
 	r.Get("/open-items", s.listOpenItems)
 	r.Post("/invoice", s.createInvoice)
+	r.Post("/invoice/{id}/cancel-monthly", s.cancelMonthlyInvoice)
 	r.Post("/receipt", s.createReceipt)
 	r.Post("/receipt/complete", s.completeReceipt)
 	r.Post("/loan-in", s.createLoanIn)
@@ -42,6 +44,7 @@ func (s *Service) Mount(r chi.Router) {
 		r.Use(s.auth.RequireAuth, s.auth.RequireOrg)
 		r.Get("/open-items", s.listOpenItems)
 		r.Post("/invoice", s.createInvoice)
+		r.Post("/invoice/{id}/cancel-monthly", s.cancelMonthlyInvoice)
 		r.Post("/receipt", s.createReceipt)
 		r.Post("/receipt/complete", s.completeReceipt)
 		r.Post("/loan-in", s.createLoanIn)
@@ -152,6 +155,25 @@ func (s *Service) createInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	platform.JSON(w, http.StatusCreated, map[string]any{"document": doc})
+}
+
+func (s *Service) cancelMonthlyInvoice(w http.ResponseWriter, r *http.Request) {
+	userID, orgID, ok := s.assertPost(w, r)
+	if !ok {
+		return
+	}
+	docID := chi.URLParam(r, "id")
+	if docID == "" {
+		platform.JSONError(w, platform.NewApiError(http.StatusBadRequest, "VALIDATION_ERROR", "Invoice id is required"))
+		return
+	}
+	result, err := CancelMonthlyInvoice(r.Context(), s.db, orgID, docID)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	audit.Log(r.Context(), s.db, orgID, userID, "invoice.monthly_canceled", "document", docID, result)
+	platform.JSON(w, http.StatusOK, map[string]any{"canceled": result})
 }
 
 func (s *Service) createReceipt(w http.ResponseWriter, r *http.Request) {

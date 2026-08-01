@@ -216,11 +216,13 @@ function OpenItemsTable({
   empty,
   showActions,
   onComplete,
+  onCancelMonthly,
 }: {
   items: OpenItem[];
   empty: string;
   showActions?: boolean;
   onComplete?: (item: OpenItem) => void;
+  onCancelMonthly?: (item: OpenItem) => void;
 }) {
   if (items.length === 0) return <EmptyState>{empty}</EmptyState>;
   return (
@@ -234,46 +236,63 @@ function OpenItemsTable({
         ...(showActions ? [{ label: "", align: "right" as const }] : []),
       ]}
     >
-      {items.map((i) => (
-        <DataRow key={i.id}>
-          <Td className="font-mono text-xs">{i.documentNumber || "—"}</Td>
-          <Td>
-            {i.description || "—"}
-            {i.isMonthly ? <span className="ml-1 text-xs text-pine">· bulanan</span> : null}
-          </Td>
-          <Td>{formatDateID(i.dueDate)}</Td>
-          <Td>
-            <StatusBadge status={i.status} variant="openItem" label={openItemStatusLabel(i.status)} />
-          </Td>
-          <Td align="right" className="font-medium">
-            {formatIDR(i.balanceAmount)}
-          </Td>
-          {showActions ? (
-            <Td align="right">
-              <div className="flex flex-wrap justify-end gap-2">
-                {i.documentId ? (
-                  <Link
-                    to={`/invoices/${i.documentId}/print`}
-                    target="_blank"
-                    className="text-sm text-pine hover:underline"
-                  >
-                    Cetak
-                  </Link>
-                ) : null}
-                {onComplete ? (
-                  <button
-                    type="button"
-                    className="text-sm text-pine border border-pine/30 rounded px-2.5 py-1 hover:bg-pine/10"
-                    onClick={() => onComplete(i)}
-                  >
-                    Lunasi
-                  </button>
-                ) : null}
-              </div>
+      {items.map((i) => {
+        const canCancelMonthly =
+          Boolean(onCancelMonthly) &&
+          i.isMonthly &&
+          Boolean(i.documentId) &&
+          i.status === "open" &&
+          Math.abs(i.balanceAmount - i.originalAmount) < 1;
+        return (
+          <DataRow key={i.id}>
+            <Td className="font-mono text-xs">{i.documentNumber || "—"}</Td>
+            <Td>
+              {i.description || "—"}
+              {i.isMonthly ? <span className="ml-1 text-xs text-pine">· bulanan</span> : null}
             </Td>
-          ) : null}
-        </DataRow>
-      ))}
+            <Td>{formatDateID(i.dueDate)}</Td>
+            <Td>
+              <StatusBadge status={i.status} variant="openItem" label={openItemStatusLabel(i.status)} />
+            </Td>
+            <Td align="right" className="font-medium">
+              {formatIDR(i.balanceAmount)}
+            </Td>
+            {showActions ? (
+              <Td align="right">
+                <div className="flex flex-wrap justify-end gap-2">
+                  {i.documentId ? (
+                    <Link
+                      to={`/invoices/${i.documentId}/print`}
+                      target="_blank"
+                      className="text-sm text-pine hover:underline"
+                    >
+                      Cetak
+                    </Link>
+                  ) : null}
+                  {canCancelMonthly ? (
+                    <button
+                      type="button"
+                      className={dangerBtn}
+                      onClick={() => onCancelMonthly?.(i)}
+                    >
+                      Batalkan
+                    </button>
+                  ) : null}
+                  {onComplete ? (
+                    <button
+                      type="button"
+                      className="text-sm text-pine border border-pine/30 rounded px-2.5 py-1 hover:bg-pine/10"
+                      onClick={() => onComplete(i)}
+                    >
+                      Lunasi
+                    </button>
+                  ) : null}
+                </div>
+              </Td>
+            ) : null}
+          </DataRow>
+        );
+      })}
     </DataTable>
   );
 }
@@ -362,6 +381,72 @@ function CompletePaymentDialog({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function CancelMonthlyDialog({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item: OpenItem;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const orgId = useOrgId();
+  const [busy, setBusy] = useState(false);
+
+  async function onConfirm() {
+    if (!orgId || !item.documentId) return;
+    setBusy(true);
+    try {
+      await apiJson(`/api/invoice/${item.documentId}/cancel-monthly`, { method: "POST", body: "{}" }, orgId);
+      toast.success("Tagihan bulanan dibatalkan. Buat invoice baru jika nominal berubah.");
+      await onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Gagal membatalkan tagihan");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" role="dialog">
+      <div className="w-full max-w-md rounded-lg border border-sand bg-paper-card p-5 shadow-lg space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-lg">Batalkan tagihan bulanan</h2>
+            <p className="text-sm text-ink-muted mt-1">
+              Invoice {item.documentNumber || ""} ({formatIDR(item.balanceAmount)}) akan dihapus. Auto-tagihan
+              bulan berikutnya berhenti. Buat invoice baru manual jika ingin lanjut dengan nominal lain.
+            </p>
+          </div>
+          <button type="button" className="text-ink-faint hover:text-ink text-sm" onClick={onClose} disabled={busy}>
+            Tutup
+          </button>
+        </div>
+        <div className={warnBox}>Hanya untuk invoice yang belum ada pembayaran. Tindakan ini tidak bisa dibatalkan.</div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className="flex-1 rounded-lg border border-sand px-4 py-2.5 text-sm"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Kembali
+          </button>
+          <button
+            type="button"
+            className="flex-1 bg-red-600 text-white rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+            onClick={() => void onConfirm()}
+            disabled={busy}
+          >
+            {busy ? "Menghapus…" : "Ya, batalkan"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -789,6 +874,7 @@ export function ReceivablesPage() {
   const { docs, openItems, reload } = useDocsAndOpenItems(["invoice", "receipt"], "receivable");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [completeItem, setCompleteItem] = useState<OpenItem | null>(null);
+  const [cancelItem, setCancelItem] = useState<OpenItem | null>(null);
   const openTotal = openItems.reduce((s, i) => s + i.balanceAmount, 0);
 
   useEffect(() => {
@@ -815,6 +901,7 @@ export function ReceivablesPage() {
           empty="Belum ada piutang terbuka."
           showActions
           onComplete={setCompleteItem}
+          onCancelMonthly={setCancelItem}
         />
       </section>
       <div className="grid sm:grid-cols-2 gap-6 max-w-4xl">
@@ -849,6 +936,13 @@ export function ReceivablesPage() {
         <CompletePaymentDialog
           item={completeItem}
           onClose={() => setCompleteItem(null)}
+          onSaved={reload}
+        />
+      ) : null}
+      {cancelItem ? (
+        <CancelMonthlyDialog
+          item={cancelItem}
+          onClose={() => setCancelItem(null)}
           onSaved={reload}
         />
       ) : null}
@@ -1576,6 +1670,7 @@ export function ContactDetailPage() {
   const [openItems, setOpenItems] = useState<OpenItem[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [completeItem, setCompleteItem] = useState<OpenItem | null>(null);
+  const [cancelItem, setCancelItem] = useState<OpenItem | null>(null);
 
   async function reload() {
     if (!orgId || !id) return;
@@ -1671,6 +1766,7 @@ export function ContactDetailPage() {
           empty="Belum ada piutang terbuka untuk kontak ini."
           showActions
           onComplete={setCompleteItem}
+          onCancelMonthly={setCancelItem}
         />
       </section>
 
@@ -1711,6 +1807,13 @@ export function ContactDetailPage() {
         <CompletePaymentDialog
           item={completeItem}
           onClose={() => setCompleteItem(null)}
+          onSaved={reload}
+        />
+      ) : null}
+      {cancelItem ? (
+        <CancelMonthlyDialog
+          item={cancelItem}
+          onClose={() => setCancelItem(null)}
           onSaved={reload}
         />
       ) : null}
