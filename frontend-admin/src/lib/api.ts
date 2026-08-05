@@ -8,6 +8,14 @@ export class ApiError extends Error {
   }
 }
 
+/** Production path prefix (e.g. `/finbiz-api`); empty in local dev. */
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
+export function apiUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
+  return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 let getToken: () => string | null = () => null;
 let onRefreshed: (token: string) => void = () => {};
 let onAuthFailed: () => void = () => {};
@@ -29,7 +37,7 @@ let refreshPromise: Promise<string | null> | null = null;
 async function refreshAccess(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const res = await fetch("/api/platform/auth/refresh", {
+      const res = await fetch(apiUrl("/api/platform/auth/refresh"), {
         method: "POST",
         credentials: "include",
       });
@@ -48,6 +56,7 @@ async function refreshAccess(): Promise<string | null> {
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const url = apiUrl(path);
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
@@ -55,7 +64,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  let res = await fetch(path, { ...init, headers, credentials: "include" });
+  let res = await fetch(url, { ...init, headers, credentials: "include" });
   if (
     res.status === 401 &&
     !path.includes("/auth/login") &&
@@ -64,7 +73,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     const next = await refreshAccess();
     if (next) {
       headers.set("Authorization", `Bearer ${next}`);
-      res = await fetch(path, { ...init, headers, credentials: "include" });
+      res = await fetch(url, { ...init, headers, credentials: "include" });
     } else {
       onAuthFailed();
     }

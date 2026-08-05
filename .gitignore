@@ -13,5 +13,6 @@ backend-ts-archive/drizzle/meta/
 backend-ts-archive/node_modules/
 backend-ts-archive/dist/
 backend-go/.env
+dist-deploy/
 .idea/
 .vscode/

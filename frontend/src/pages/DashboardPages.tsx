@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { DataRow, DataTable, Td } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -109,9 +109,9 @@ export function DashboardPage() {
       <div>
         <h1 className="font-display text-3xl mb-2">Dashboard</h1>
         <p className="text-ink-muted mb-4">Belum ada bisnis. Buat yang pertama.</p>
-        <a href="/onboarding" className="text-pine font-medium">
+        <Link to="/onboarding" className="text-pine font-medium">
           Onboarding →
-        </a>
+        </Link>
       </div>
     );
   }
